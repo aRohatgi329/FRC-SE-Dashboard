@@ -68,4 +68,4 @@ The dashboard contains 4 tabs, each applying a specific systems engineering tool
 
 ## Screenshot
 
-[drop a screenshot of the dashboard here]
+![Dashboard Screenshot](RTM_Page2.jpeg)
