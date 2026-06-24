@@ -24,6 +24,18 @@ HEADER_STYLE = [
     ]},
 ]
 
+PHASE_ORDER = ["Design", "Build", "Test"]
+SUBSYSTEM_PALETTE = [
+    "#5B8DB8", "#5BBF8A", "#E0A458", "#9B7FBF",
+    "#D98CA1", "#5FB0C9", "#C97F7F", "#86B85B",
+]
+
+
+def _rgba(hex_color, alpha):
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
 
 @st.cache_data(ttl=60)
 def load_rtm():
@@ -125,7 +137,7 @@ def render_mops(df):
 
 
 def render_trade_studies(df):
-    st.info("Scores are 1–5: 1 = poor, 5 = excellent. Higher weighted score = preferred option.")
+    st.info("Scores are 1–5: 1 = Poor, 5 = Excellent. Higher weighted score = preferred option.")
     for decision, group in df.groupby("Decision"):
         st.subheader(decision)
         pivot = group.pivot_table(
@@ -164,14 +176,7 @@ def render_trade_studies(df):
     st.caption(FOOTER)
 
 
-def render_timeline(df):
-    total_subsystems = df["Subsystem"].nunique()
-    critical_count = df[df["Critical Path"] == "Yes"]["Subsystem"].nunique()
-
-    c1, c2, _ = st.columns([1, 1, 4])
-    c1.metric("Total Subsystems", total_subsystems)
-    c2.metric("Critical Path Subsystems", critical_count)
-
+def build_timeline_fig(df):
     base_date = datetime.date(2026, 1, 10)
     df = df.copy()
     df = df.dropna(subset=["Start Week", "End Week"])
@@ -179,38 +184,93 @@ def render_timeline(df):
     df["End Week"] = df["End Week"].astype(int)
     df["Start Date"] = df["Start Week"].apply(lambda w: base_date + datetime.timedelta(weeks=w - 1))
     df["End Date"] = df["End Week"].apply(lambda w: base_date + datetime.timedelta(weeks=w))
-    df["Subsystem Phase"] = df["Subsystem"] + " - " + df["Phase"]
-
+    subsystem_order = list(dict.fromkeys(df["Subsystem"]))
+    phase_rank = {p: i for i, p in enumerate(PHASE_ORDER)}
+    df["_sub"] = df["Subsystem"].map({s: i for i, s in enumerate(subsystem_order)})
+    df["_phase"] = df["Phase"].map(phase_rank).fillna(len(PHASE_ORDER))
+    df = df.sort_values(["_sub", "_phase"]).reset_index(drop=True)
+    df["Row"] = df["Subsystem"] + " — " + df["Phase"]
+    color_map = {s: SUBSYSTEM_PALETTE[i % len(SUBSYSTEM_PALETTE)] for i, s in enumerate(subsystem_order)}
+    display_order = df["Row"].tolist()
     fig = px.timeline(
         df,
         x_start="Start Date",
         x_end="End Date",
-        y="Subsystem Phase",
-        color="Critical Path",
-        color_discrete_map={"Yes": "#E74C3C", "No": "#5B8DB8"},
-        title="Build Season Timeline (6 Weeks)",
-        labels={"Start Date": "Build Week", "End Date": "Build Week"},
-        custom_data=["Critical Path", "Start Week", "End Week", "Phase"],
+        y="Row",
+        color="Subsystem",
+        color_discrete_map=color_map,
+        category_orders={"Subsystem": subsystem_order},
+        custom_data=["Subsystem", "Phase", "Critical Path", "Start Week", "End Week"],
     )
+    crit = df.set_index("Row")["Critical Path"].to_dict()
+    for tr in fig.data:
+        tr.marker.line.width = [3 if crit.get(r) == "Yes" else 0 for r in tr.y]
+        tr.marker.line.color = "#C0392B"
     fig.update_traces(
-        hovertemplate="<b>%{y}</b><br>Critical Path: %{customdata[0]}<br>Week %{customdata[1]} to %{customdata[2]}<br>Phase: %{customdata[3]}<extra></extra>",
+        hovertemplate=(
+            "<b>%{customdata[0]} — %{customdata[1]}</b><br>"
+            "Week %{customdata[3]} to %{customdata[4]}<br>"
+            "Critical Path: %{customdata[2]}<extra></extra>"
+        ),
+    )
+    shapes, annotations = [], []
+    idx = 0
+    for s in subsystem_order:
+        n = int((df["Subsystem"] == s).sum())
+        start, end = idx, idx + n - 1
+        center = (start + end) / 2
+        shapes.append(dict(
+            type="rect", xref="paper", x0=0, x1=1,
+            yref="y", y0=start - 0.5, y1=end + 0.5,
+            fillcolor=_rgba(color_map[s], 0.10), line_width=0, layer="below",
+        ))
+        if end + 1 < len(display_order):
+            shapes.append(dict(
+                type="line", xref="paper", x0=0, x1=1,
+                yref="y", y0=end + 0.5, y1=end + 0.5,
+                line=dict(color="rgba(0,0,0,0.12)", width=1),
+            ))
+        annotations.append(dict(
+            xref="paper", x=-0.10, yref="y", y=center,
+            text=f"<b>{s}</b>", showarrow=False,
+            font=dict(size=13, color=color_map[s]),
+            xanchor="right", yanchor="middle",
+        ))
+        idx += n
+    fig.update_yaxes(
+        categoryorder="array", categoryarray=display_order, autorange="reversed",
+        tickmode="array", tickvals=display_order,
+        ticktext=[r.split(" — ")[1] for r in display_order],
+        title="",
     )
     fig.update_xaxes(
         title="Build Week",
         tickvals=[base_date + datetime.timedelta(weeks=i) for i in range(6)],
-        ticktext=["Week 1", "Week 2", "Week 3", "Week 4", "Week 5", "Week 6"],
+        ticktext=[f"Week {i + 1}" for i in range(6)],
+        range=[base_date - datetime.timedelta(days=1), base_date + datetime.timedelta(weeks=6, days=1)],
+        showgrid=True, gridcolor="rgba(0,0,0,0.08)",
     )
-    fig.update_yaxes(title="", autorange="reversed")
-    fig.update_yaxes(categoryorder="array", categoryarray=df["Subsystem Phase"].tolist())
-    fig.update_xaxes(range=[
-        base_date - datetime.timedelta(days=1),
-        base_date + datetime.timedelta(weeks=6, days=1)
-    ])
-    fig.update_layout(legend_title_text="Critical Path", height=600)
+    fig.update_layout(
+        title="Build Season Timeline (6 Weeks)",
+        shapes=shapes, annotations=annotations,
+        showlegend=False, bargap=0.35,
+        margin=dict(l=200, r=20, t=60, b=40),
+        height=max(420, 42 * len(display_order) + 120),
+    )
+    return fig
 
+
+def render_timeline(df):
+    total_subsystems = df["Subsystem"].nunique()
+    critical_count = df[df["Critical Path"] == "Yes"]["Subsystem"].nunique()
+    c1, c2, _ = st.columns([1, 1, 4])
+    c1.metric("Total Subsystems", total_subsystems)
+    c2.metric("Critical Path Subsystems", critical_count)
+    fig = build_timeline_fig(df)
     st.plotly_chart(fig, use_container_width=True)
     st.info(
-        "Red bars indicate critical path items — delays here push the overall build season end date."
+        "Each subsystem is a tier, with its Design → Build → Test phases grouped together. "
+        "Bars outlined in red are on the critical path — delays there push out the overall build-season end date."
     )
     st.caption(FOOTER)
 
