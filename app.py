@@ -270,7 +270,7 @@ def render_timeline(df):
     st.plotly_chart(fig, use_container_width=True)
     st.info(
         "Each subsystem is a tier, with its Design → Build → Test phases grouped together. "
-        "Bars outlined in red are on the critical path — delays there push out the overall build-season end date."
+        "Bars outlined in red are on the critical path: delays there push out the overall build-season end date."
     )
     st.caption(FOOTER)
 
