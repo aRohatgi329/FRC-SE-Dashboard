@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-st.set_page_config(page_title="FRC SE Dashboard", layout="wide", page_icon="🤖")
+st.set_page_config(page_title="FRC SE Dashboard", layout="wide", page_icon="🔥")
 
 RTM_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSQgaMOpy2wqYeqs6X2O4cdYbvlp6uriUkjyIsOrF90ZAP3qXyA-Aq8_PQIPpkRt2MdQ6jyuz_p4Hvp/pub?gid=828480827&single=true&output=csv"
 MOPS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSQgaMOpy2wqYeqs6X2O4cdYbvlp6uriUkjyIsOrF90ZAP3qXyA-Aq8_PQIPpkRt2MdQ6jyuz_p4Hvp/pub?gid=1329821145&single=true&output=csv"
