@@ -192,8 +192,6 @@ def render_timeline(df):
         labels={"Start Date": "Build Week", "End Date": "Build Week"},
         custom_data=["Critical Path", "Start Week", "End Week", "Phase"],
     )
-    subsystem_order = df["Subsystem Phase"].tolist()
-    fig.update_yaxes(categoryorder="array", categoryarray=list(reversed(subsystem_order)))
     fig.update_traces(
         hovertemplate="<b>%{y}</b><br>Critical Path: %{customdata[0]}<br>Week %{customdata[1]} to %{customdata[2]}<br>Phase: %{customdata[3]}<extra></extra>",
     )
@@ -202,13 +200,13 @@ def render_timeline(df):
         tickvals=[base_date + datetime.timedelta(weeks=i) for i in range(6)],
         ticktext=["Week 1", "Week 2", "Week 3", "Week 4", "Week 5", "Week 6"],
     )
-    fig.update_yaxes(title="")
+    fig.update_yaxes(title="", autorange="reversed")
+    fig.update_yaxes(categoryorder="array", categoryarray=df["Subsystem Phase"].tolist())
     fig.update_xaxes(range=[
         base_date - datetime.timedelta(days=1),
         base_date + datetime.timedelta(weeks=6, days=1)
     ])
     fig.update_layout(legend_title_text="Critical Path", height=600)
-    fig.update_yaxes(autorange="reversed")
 
     st.plotly_chart(fig, use_container_width=True)
     st.info(
