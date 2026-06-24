@@ -1,4 +1,6 @@
+import datetime
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 st.set_page_config(page_title="FRC SE Dashboard", layout="wide", page_icon="🤖")
@@ -6,6 +8,7 @@ st.set_page_config(page_title="FRC SE Dashboard", layout="wide", page_icon="🤖
 RTM_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSQgaMOpy2wqYeqs6X2O4cdYbvlp6uriUkjyIsOrF90ZAP3qXyA-Aq8_PQIPpkRt2MdQ6jyuz_p4Hvp/pub?gid=828480827&single=true&output=csv"
 MOPS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSQgaMOpy2wqYeqs6X2O4cdYbvlp6uriUkjyIsOrF90ZAP3qXyA-Aq8_PQIPpkRt2MdQ6jyuz_p4Hvp/pub?gid=1329821145&single=true&output=csv"
 TRADE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSQgaMOpy2wqYeqs6X2O4cdYbvlp6uriUkjyIsOrF90ZAP3qXyA-Aq8_PQIPpkRt2MdQ6jyuz_p4Hvp/pub?gid=1956824063&single=true&output=csv"
+TIMELINE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSQgaMOpy2wqYeqs6X2O4cdYbvlp6uriUkjyIsOrF90ZAP3qXyA-Aq8_PQIPpkRt2MdQ6jyuz_p4Hvp/pub?gid=1473212198&single=true&output=csv"
 
 FOOTER = "Data updates every 60 seconds from Google Sheets"
 
@@ -48,6 +51,16 @@ def load_mops():
 def load_trade_study():
     try:
         return pd.read_csv(TRADE_URL)
+    except Exception as e:
+        st.error(f"Failed to load data: {e}")
+        st.stop()
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=60)
+def load_timeline():
+    try:
+        return pd.read_csv(TIMELINE_URL)
     except Exception as e:
         st.error(f"Failed to load data: {e}")
         st.stop()
@@ -116,7 +129,7 @@ def render_trade_studies(df):
     for decision, group in df.groupby("Decision"):
         st.subheader(decision)
         pivot = group.pivot_table(
-            index="Option", columns="Criterion", values="Weighted Score", aggfunc="sum"
+            index="Option", columns="Criterion", values="Weighted Score", aggfunc="first"
         )
         pivot["Total Weighted Score"] = pivot.sum(axis=1)
         winner = pivot["Total Weighted Score"].idxmax()
@@ -151,6 +164,59 @@ def render_trade_studies(df):
     st.caption(FOOTER)
 
 
+def render_timeline(df):
+    total_subsystems = df["Subsystem"].nunique()
+    critical_count = df[df["Critical Path"] == "Yes"]["Subsystem"].nunique()
+
+    c1, c2, _ = st.columns([1, 1, 4])
+    c1.metric("Total Subsystems", total_subsystems)
+    c2.metric("Critical Path Subsystems", critical_count)
+
+    base_date = datetime.date(2026, 1, 10)
+    df = df.copy()
+    df = df.dropna(subset=["Start Week", "End Week"])
+    df["Start Week"] = df["Start Week"].astype(int)
+    df["End Week"] = df["End Week"].astype(int)
+    df["Start Date"] = df["Start Week"].apply(lambda w: base_date + datetime.timedelta(weeks=w - 1))
+    df["End Date"] = df["End Week"].apply(lambda w: base_date + datetime.timedelta(weeks=w))
+    df["Subsystem Phase"] = df["Subsystem"] + " - " + df["Phase"]
+
+    fig = px.timeline(
+        df,
+        x_start="Start Date",
+        x_end="End Date",
+        y="Subsystem Phase",
+        color="Critical Path",
+        color_discrete_map={"Yes": "#E74C3C", "No": "#5B8DB8"},
+        title="Build Season Timeline (6 Weeks)",
+        labels={"Start Date": "Build Week", "End Date": "Build Week"},
+        custom_data=["Critical Path", "Start Week", "End Week", "Phase"],
+    )
+    subsystem_order = df["Subsystem Phase"].tolist()
+    fig.update_yaxes(categoryorder="array", categoryarray=list(reversed(subsystem_order)))
+    fig.update_traces(
+        hovertemplate="<b>%{y}</b><br>Critical Path: %{customdata[0]}<br>Week %{customdata[1]} to %{customdata[2]}<br>Phase: %{customdata[3]}<extra></extra>",
+    )
+    fig.update_xaxes(
+        title="Build Week",
+        tickvals=[base_date + datetime.timedelta(weeks=i) for i in range(6)],
+        ticktext=["Week 1", "Week 2", "Week 3", "Week 4", "Week 5", "Week 6"],
+    )
+    fig.update_yaxes(title="")
+    fig.update_xaxes(range=[
+        base_date - datetime.timedelta(days=1),
+        base_date + datetime.timedelta(weeks=6, days=1)
+    ])
+    fig.update_layout(legend_title_text="Critical Path", height=600)
+    fig.update_yaxes(autorange="reversed")
+
+    st.plotly_chart(fig, use_container_width=True)
+    st.info(
+        "Red bars indicate critical path items — delays here push the overall build season end date."
+    )
+    st.caption(FOOTER)
+
+
 def main():
     st.markdown("""
     <style>
@@ -175,7 +241,7 @@ def main():
     mops_df = load_mops()
     trade_df = load_trade_study()
 
-    tab_rtm, tab_mops, tab_trade = st.tabs(["RTM", "MOPs", "Trade Studies"])
+    tab_rtm, tab_mops, tab_trade, tab_timeline = st.tabs(["RTM", "MOPs", "Trade Studies", "Build Timeline"])
 
     with tab_rtm:
         render_rtm(rtm_df)
@@ -185,6 +251,10 @@ def main():
 
     with tab_trade:
         render_trade_studies(trade_df)
+
+    with tab_timeline:
+        timeline_df = load_timeline()
+        render_timeline(timeline_df)
 
 
 if __name__ == "__main__":
