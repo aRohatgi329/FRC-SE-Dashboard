@@ -9,6 +9,18 @@ TRADE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSQgaMOpy2wqYeqs6X2
 
 FOOTER = "Data updates every 60 seconds from Google Sheets"
 
+HEADER_STYLE = [
+    {"selector": "th", "props": [
+        ("background-color", "#f0f0f0"),
+        ("color", "black"),
+        ("font-weight", "bold"),
+    ]},
+    {"selector": "th.row_heading", "props": [
+        ("color", "black"),
+        ("font-weight", "normal"),
+    ]},
+]
+
 
 @st.cache_data(ttl=60)
 def load_rtm():
@@ -64,7 +76,11 @@ def render_rtm(df):
 
     df = df.copy()
     df.index = range(1, len(df) + 1)
-    styled = df.style.map(style_rtm_status, subset=["Status"])
+    styled = (
+        df.style
+        .map(style_rtm_status, subset=["Status"])
+        .set_table_styles(HEADER_STYLE)
+    )
     st.dataframe(styled, use_container_width=True)
     st.caption(FOOTER)
 
@@ -81,7 +97,14 @@ def render_mops(df):
 
     df = df.copy()
     df.index = range(1, len(df) + 1)
-    styled = df.drop(columns=["Pass Direction"], errors="ignore").style.map(style_mops_status, subset=["Status"])
+    df["Target"] = df["Target"].apply(lambda x: f"{x:g}")
+    df["Actual"] = df["Actual"].apply(lambda x: f"{x:g}")
+    styled = (
+        df.drop(columns=["Pass Direction"], errors="ignore")
+        .style
+        .map(style_mops_status, subset=["Status"])
+        .set_table_styles(HEADER_STYLE)
+    )
     st.dataframe(styled, use_container_width=True)
     st.caption(FOOTER)
 
@@ -96,10 +119,30 @@ def render_trade_studies(df):
         pivot["Total Weighted Score"] = pivot.sum(axis=1)
         winner = pivot["Total Weighted Score"].idxmax()
 
-        def bold_winner(row):
-            return ["font-weight: bold"] * len(row) if row.name == winner else [""] * len(row)
+        def highlight_pivot(df):
+            styles = pd.DataFrame("", index=df.index, columns=df.columns)
+            for col in df.columns:
+                if col == "Total Weighted Score":
+                    max_val = df[col].max()
+                    min_val = df[col].min()
+                    for idx in df.index:
+                        if df.loc[idx, col] == max_val:
+                            styles.loc[idx, col] = "background-color: #d4edda; font-weight: bold"
+                        elif df.loc[idx, col] == min_val:
+                            styles.loc[idx, col] = "background-color: #f8d7da"
+                else:
+                    max_val = df[col].max()
+                    for idx in df.index:
+                        if df.loc[idx, col] == max_val:
+                            styles.loc[idx, col] = "font-weight: bold"
+            return styles
 
-        styled = pivot.style.apply(bold_winner, axis=1)
+        styled = (
+            pivot.style
+            .apply(highlight_pivot, axis=None)
+            .format(lambda x: f"{x:g}" if isinstance(x, float) else x)
+            .set_table_styles(HEADER_STYLE)
+        )
         st.dataframe(styled, use_container_width=True)
         st.success("✅ Winning option: " + str(winner))
 
@@ -111,10 +154,6 @@ def main():
     <style>
     .stTabs [data-baseweb="tab"][aria-selected="true"] {
         color: #2ECC71;
-    }
-    h3 {
-        border-left: 4px solid #2ECC71;
-        padding-left: 10px;
     }
     [data-testid="stMetricLabel"] {
         font-size: 1.05rem;
