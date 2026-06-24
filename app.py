@@ -97,10 +97,12 @@ def render_mops(df):
 
     df = df.copy()
     df.index = range(1, len(df) + 1)
-    df["Target"] = df["Target"].apply(lambda x: f"{x:g}")
-    df["Actual"] = df["Actual"].apply(lambda x: f"{x:g}")
+    df["Target"] = df["Target"].apply(lambda x: f"{x:g}").astype(str) + " " + df["Unit"].fillna("").astype(str)
+    df["Actual"] = df["Actual"].apply(lambda x: f"{x:g}").astype(str) + " " + df["Unit"].fillna("").astype(str)
+    df["Target"] = df["Target"].str.strip()
+    df["Actual"] = df["Actual"].str.strip()
     styled = (
-        df.drop(columns=["Pass Direction"], errors="ignore")
+        df.drop(columns=["Pass Direction", "Unit"], errors="ignore")
         .style
         .map(style_mops_status, subset=["Status"])
         .set_table_styles(HEADER_STYLE)
