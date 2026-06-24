@@ -62,6 +62,8 @@ def render_rtm(df):
     c2.metric("Verified", verified)
     c3.metric("Failed", failed)
 
+    df = df.copy()
+    df.index = range(1, len(df) + 1)
     styled = df.style.map(style_rtm_status, subset=["Status"])
     st.dataframe(styled, use_container_width=True)
     st.caption(FOOTER)
@@ -77,15 +79,17 @@ def render_mops(df):
     c2.metric("Pass", passing)
     c3.metric("Fail", failing)
 
+    df = df.copy()
+    df.index = range(1, len(df) + 1)
     styled = df.drop(columns=["Pass Direction"], errors="ignore").style.map(style_mops_status, subset=["Status"])
     st.dataframe(styled, use_container_width=True)
     st.caption(FOOTER)
 
 
 def render_trade_studies(df):
+    st.info("Scores are 1–5: 1 = poor, 5 = excellent. Higher weighted score = preferred option.")
     for decision, group in df.groupby("Decision"):
         st.subheader(decision)
-        st.caption("Higher weighted score = preferred option")
         pivot = group.pivot_table(
             index="Option", columns="Criterion", values="Weighted Score", aggfunc="sum"
         )
@@ -97,15 +101,34 @@ def render_trade_studies(df):
 
         styled = pivot.style.apply(bold_winner, axis=1)
         st.dataframe(styled, use_container_width=True)
-        st.caption("Winning option: **" + str(winner) + "**")
+        st.success("✅ Winning option: " + str(winner))
 
     st.caption(FOOTER)
 
 
 def main():
-    st.title("FRC Systems Engineering Dashboard")
+    st.markdown("""
+    <style>
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: #2ECC71;
+    }
+    h3 {
+        border-left: 4px solid #2ECC71;
+        padding-left: 10px;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 1.05rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.title("TORCH 5804 | FRC Systems Engineering Dashboard")
     st.markdown('<p style="color: gray; margin-top: -12px;">ISO 15288 Systems Engineering | 2025-26 Season</p>', unsafe_allow_html=True)
     st.divider()
+
+    if st.button("🔄 Refresh Data"):
+        st.cache_data.clear()
+        st.rerun()
 
     rtm_df = load_rtm()
     mops_df = load_mops()
